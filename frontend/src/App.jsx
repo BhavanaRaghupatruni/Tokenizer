@@ -22,8 +22,10 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [vocabInfo, setVocabInfo] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const debouncedText = useDebounce(text, 300);
   const abortRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     fetch(`${API}/api/vocab-info`)
@@ -64,12 +66,62 @@ export default function App() {
         setError('Could not reach the backend. Make sure the FastAPI server is running on port 8000.');
         setLoading(false);
       });
-  }, [debouncedText]);
+  }, [debouncedText, refreshKey]);
 
   const handleClear = () => {
     setText('');
     setResult(null);
     setError(null);
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      setError('File is too large. Maximum size is 10MB.');
+      event.target.value = '';
+      return;
+    }
+
+    // Reset input so the same file can be uploaded again
+    event.target.value = '';
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API}/api/extract-text`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.text) {
+        setText(data.text);
+      } else {
+        setError('Could not extract text from the file.');
+      }
+    } catch (err) {
+      setError('Error uploading file. Make sure the backend is running.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTokensAdded = () => {
+    setRefreshKey(k => k + 1);
+    fetch(`${API}/api/vocab-info`)
+      .then(r => r.json())
+      .then(setVocabInfo)
+      .catch(() => {});
   };
 
   const handleExample = () => {
@@ -185,6 +237,31 @@ export default function App() {
           </div>
 
           <div style={{ display: 'flex', gap: '8px' }}>
+            {/* Hidden file input */}
+            <input
+              type="file"
+              accept=".txt,.pdf"
+              ref={fileInputRef}
+              style={{ display: 'none' }}
+              onChange={handleFileUpload}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                padding: '6px 16px',
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontSize: '13px',
+                transition: 'border-color 0.15s, color 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--text-secondary)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+            >
+              Upload file
+            </button>
             <button
               onClick={handleClear}
               style={{
@@ -245,7 +322,7 @@ export default function App() {
         alignItems: 'flex-start',
         flexWrap: 'wrap',
       }}>
-        <TokenizerPanel result={result?.simple ?? null} isSimple={true} />
+        <TokenizerPanel result={result?.simple ?? null} isSimple={true} onTokensAdded={handleTokensAdded} />
         <TokenizerPanel result={result?.tiktoken ?? null} isSimple={false} />
       </div>
 
