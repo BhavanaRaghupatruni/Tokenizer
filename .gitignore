@@ -20,3 +20,11 @@ dist/
 # Env files
 .env
 .env.*
+
+# Custom virtualenvs
+backend/tok/
+frontend/frot/
+
+# Generated files
+backend/pending_bpe_tokens.txt
+
